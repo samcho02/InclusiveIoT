@@ -1,112 +1,115 @@
+# Author of this file: Sungmin Cho and Sujin Shin
+# Adapted from the sign language recognition project described in the article:
+# https://towardsdatascience.com/sign-language-recognition-with-advanced-computer-vision-7b74f20f3442
+# Credit and acknowledgment to the original author for their valuable contributions.
+
+# modules
 import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
 import cv2
 import mediapipe as mp
 from keras.models import load_model
 import numpy as np
 import time
+import pandas as pd
 
-def load_hand_model(model_path):
-    return load_model(model_path)
+# Load pre-trained model
+model = load_model('saved_model2.h5')
 
-def initialize_mediapipe_hands():
-    mphands = mp.solutions.hands
-    hands = mphands.Hands()
-    mp_drawing = mp.solutions.drawing_utils
-    return hands, mp_drawing
+# Initialize MediaPipe Hands module
+mphands = mp.solutions.hands
+hands = mphands.Hands()
+mp_drawing = mp.solutions.drawing_utils
 
-def detect_hands(frame, hands):
-    framergb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    return hands.process(framergb)
+# Define gesture labels
+letterpred = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y']
 
-def extract_hand_bbox(handLMs, w, h):
-    x_max, y_max, x_min, y_min = w, h, 0, 0
-    for lm in handLMs.landmark:
-        x, y = int(lm.x * w), int(lm.y * h)
-        x_max = max(x, x_max)
-        x_min = min(x, x_min)
-        y_max = max(y, y_max)
-        y_min = min(y, y_min)
-    y_min -= 20
-    y_max += 20
-    x_min -= 20
-    x_max += 20
-    return x_min, y_min, x_max, y_max
+# Open video capture device
+cap = cv2.VideoCapture(0)  
+_, frame = cap.read()
+h, w, c = frame.shape
 
-def preprocess_frame(frame, bbox):
-    x_min, y_min, x_max, y_max = bbox
-    analysis_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    analysis_frame = analysis_frame[y_min:y_max, x_min:x_max]
-    analysis_frame = cv2.resize(analysis_frame, (28, 28))
-    return analysis_frame
-
-def predict_gesture(model, analysis_frame, letterpred):
-    pixeldata = analysis_frame.reshape(-1, 28, 28, 1) / 255
-    prediction = model.predict(pixeldata)[0]
-    top_predictions_indices = prediction.argsort()[-3:][::-1]
-    top_predictions = [(letterpred[i], prediction[i]) for i in top_predictions_indices]
-    return top_predictions
-
-def main():
-    # Load pre-trained model
-    model_path = 'saved_model2.h5'
-    model = load_hand_model(model_path)
-
-    # Initialize MediaPipe Hands module
-    hands, mp_drawing = initialize_mediapipe_hands()
-
-    # Define gesture labels
-    letterpred = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y']
-
-    # Open video capture device
-    cap = cv2.VideoCapture(0)
+# Main loop
+print("RECORDING!!!!!") # recording
+while True:
     _, frame = cap.read()
-    h, w, c = frame.shape
+    k = cv2.waitKey(1)
+    
+    if k % 256 == 27:
+        print("Escape hit, closing...")  
+        break
+    
+    elif k % 256 == 32:
+        analysisframe = frame
+        showframe = analysisframe
+        cv2.imshow("Frame", showframe)
+        
+        # Hand analysis
+        framergbanalysis = cv2.cvtColor(analysisframe, cv2.COLOR_BGR2RGB)
+        resultanalysis = hands.process(framergbanalysis)
+        hand_landmarksanalysis = resultanalysis.multi_hand_landmarks
 
-    print("RECORDING!!!!!")  # Indicate recording
-    while True:
-        _, frame = cap.read()
-        k = cv2.waitKey(1)
+        if hand_landmarksanalysis:
+            for handLMsanalysis in hand_landmarksanalysis:
+                # set dimensions
+                x_max, y_max, x_min, y_min = 0, 0, w, h
+                for lmanalysis in handLMsanalysis.landmark:
+                    # get window to analyze
+                    x, y = int(lmanalysis.x * w), int(lmanalysis.y * h)
+                    x_max = max(x, x_max)
+                    x_min = min(x, x_min)
+                    y_max = max(y, y_max)
+                    y_min = min(y, y_min)
+                y_min -= 20
+                y_max += 20
+                x_min -= 20
+                x_max += 20 
 
-        if k % 256 == 27:
-            print("Escape hit, closing...")  # Indicate closing
-            break
-        elif k % 256 == 32:
-            analysis_frame = frame.copy()
-            show_frame = analysis_frame
-            cv2.imshow("Frame", show_frame)
 
-            # Hand analysis
-            result_analysis = detect_hands(analysis_frame, hands)
-            hand_landmarks_analysis = result_analysis.multi_hand_landmarks
+        analysisframe = cv2.cvtColor(analysisframe, cv2.COLOR_BGR2GRAY)
+        analysisframe = analysisframe[y_min:y_max, x_min:x_max]
+        analysisframe = cv2.resize(analysisframe, (28, 28))
 
-            if hand_landmarks_analysis:
-                for handLMsanalysis in hand_landmarks_analysis:
-                    bbox = extract_hand_bbox(handLMsanalysis, w, h)
-                    analysis_frame = preprocess_frame(analysis_frame, bbox)
-                    top_predictions = predict_gesture(model, analysis_frame, letterpred)
-                    # Print predictions
-                    for i, (letter, confidence) in enumerate(top_predictions, start=1):
-                        print(f"Predicted Character {i}: {letter}, Confidence: {100 * confidence:.2f}%")
+        # Preprocess data for prediction
+        pixeldata = analysisframe.reshape(-1, 28, 28, 1) / 255
 
-                    # Show predictions on frame (optional)
+        # Make prediction
+        prediction = model.predict(pixeldata)[0]
 
-        else:
-            # Hand detection and tracking
-            result = detect_hands(frame, hands)
-            hand_landmarks = result.multi_hand_landmarks
+        # Get top 3 predicted characters and confidence scores
+        top_predictions_indices = prediction.argsort()[-3:][::-1]
+        top_predictions = [(letterpred[i], prediction[i]) for i in top_predictions_indices]
 
-            if hand_landmarks:
-                for handLMs in hand_landmarks:
-                    bbox = extract_hand_bbox(handLMs, w, h)
-                    x_min, y_min, x_max, y_max = bbox
-                    cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
-                    mp_drawing.draw_landmarks(frame, handLMs, mphands.HAND_CONNECTIONS)
-            cv2.imshow("Frame", frame)
+        # Print predictions
+        for i, (letter, confidence) in enumerate(top_predictions, start=1):
+            print(f"Predicted Character {i}: {letter}, Confidence: {100 * confidence:.2f}%")
+        
+        # Show predictions on frame (optional)
 
-    time.sleep(5)
-    cap.release()
-    cv2.destroyAllWindows()
+    else:
+        # Hand detection and tracking
+        framergb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        result = hands.process(framergb)
+        hand_landmarks = result.multi_hand_landmarks
 
-if __name__ == "__main__":
-    main()
+        if hand_landmarks:
+            for handLMs in hand_landmarks:
+                x_max, y_max, x_min, y_min = 0, 0, w, h
+                for lm in handLMs.landmark:
+                    x, y = int(lm.x * w), int(lm.y * h)
+                    x_max = max(x, x_max)
+                    x_min = min(x, x_min)
+                    y_max = max(y, y_max)
+                    y_min = min(y, y_min)
+                y_min -= 20
+                y_max += 20
+                x_min -= 20
+                x_max += 20
+            cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
+            mp_drawing.draw_landmarks(frame, handLMs, mphands.HAND_CONNECTIONS)
+        cv2.imshow("Frame", frame)
+
+# destroy sequence
+time.sleep(5)
+cap.release()
+cv2.destroyAllWindows()  
