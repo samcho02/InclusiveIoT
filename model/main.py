@@ -14,7 +14,7 @@ import time
 import pandas as pd
 
 # Load pre-trained model
-model = load_model('saved_model2.h5')
+model = load_model('saved_model.h5')
 
 # Initialize MediaPipe Hands module
 mphands = mp.solutions.hands
@@ -31,14 +31,18 @@ h, w, c = frame.shape
 
 # Main loop
 print("RECORDING!!!!!") # recording
+# polling
 while True:
+    start_time = time.time()
     _, frame = cap.read()
     k = cv2.waitKey(1)
     
+    # esc to exit
     if k % 256 == 27:
         print("Escape hit, closing...")  
         break
     
+    # press space bar to analyze
     elif k % 256 == 32:
         analysisframe = frame
         showframe = analysisframe
@@ -85,6 +89,10 @@ while True:
             print(f"Predicted Character {i}: {letter}, Confidence: {100 * confidence:.2f}%")
         
         # Show predictions on frame (optional)
+            
+        # Calculate and print time taken for analysis
+        analysis_time = time.time() - start_time
+        print(f"Time taken for analysis: {analysis_time:.2f} seconds")
 
     else:
         # Hand detection and tracking
